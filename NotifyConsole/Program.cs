@@ -4,17 +4,17 @@ using System.Linq;
 using System.Text;
 using System.Configuration;
 using System.Threading;
-using ScreepsApi;
+using Screeps.Notify;
 
-namespace Screeps_Notify
+namespace Screeps.NotifyConsole
 {
     class Program
     {
-        static Client client = null;
+        static Grabber grabber = null;
+        static SendHttp http = null;
         static int Interval, DeleteLimit = 0;
         static string ScreepsUsername, ScreepsPassword, ApiKey, HttpUrl, HttpUser, HttpPassword;
         static int ThrobberPos = 0;
-        static Http http = null;
 
         static void Main(string[] args)
         {
@@ -54,7 +54,13 @@ namespace Screeps_Notify
             bool connected;
             try
             {
-                client = new Client(ScreepsUsername, ScreepsPassword);
+                grabber = new Grabber(ScreepsUsername, ScreepsPassword);
+                grabber.Interval = Interval;
+                grabber.OnNotification += Grabber_OnNotification;
+                http = new SendHttp(HttpUrl);
+                http.ApiKey = ApiKey;
+                http.HttpUser = HttpUser;
+                http.HttpPassword = HttpPassword;
                 connected = true;
 
                 Console.ForegroundColor = ConsoleColor.Green;
@@ -73,73 +79,33 @@ namespace Screeps_Notify
             return connected;
         }
 
+        private static void Grabber_OnNotification(int tick, string message)
+        {
+            Console.WriteLine("\r{0}: {1}", tick, message);
+            http.Send(new
+            {
+                tick,
+                message, 
+                user = ScreepsUsername
+            });
+        }
+
         static void Poll()
         {
             while (true)
             {
-                if( ProcessNotifications() > 0 )
-                    ClearNotifications();
+                int count = grabber.Poll();
+                if (count == 0) Throb();
                 Thread.Sleep(Interval);
             }
         }
-
-        static int ProcessNotifications()
-        {
-            int count = 0;
-            dynamic memory = client.UserMemoryGet("__notify");
-            foreach (dynamic notification in memory.data)
-            {
-                int tick = notification.tick;
-                ProcessNotification(tick, notification.message);
-                if (DeleteLimit < tick) DeleteLimit = tick;
-                count++;
-            }
-            if (count == 0) Throb();
-            return count;
-        }
-
+        
         static void Throb()
         {
             string throbber = "-\\|/";
             ThrobberPos = ++ThrobberPos % throbber.Length;
             Console.Write("\rPolling... " + throbber[ThrobberPos]);
         }
-
-        static void ProcessNotification(int tick, string message)
-        {
-            Console.WriteLine("\r{0}: {1}", tick, message);
-            SendHttp(tick, message);
-        }
-
-        static void SendHttp(int tick, string message)
-        {
-            if (string.IsNullOrEmpty(HttpUrl))
-                return;
-
-            if (http == null)
-            {
-                http = new Http();
-                http.UserAgent = "screeps_notify";
-                if (!string.IsNullOrEmpty(ApiKey))
-                    http.SetHeader("x-api-key", ApiKey);
-                if (!string.IsNullOrEmpty(HttpUser))
-                    http.SetCredential(HttpUser, HttpPassword);
-            }
-
-            Console.Write("Sending http... ");
-            dynamic response = http.Post(HttpUrl, new
-            {
-                tick,
-                message,
-                user = ScreepsUsername
-            });
-            Console.WriteLine(response);
-        }
-
-        static void ClearNotifications()
-        {
-            string command = string.Format("(()=>{{Memory.__notify=Memory.__notify.filter((notification)=>notification.tick>{0});return \"Notifications collected\";}})();", DeleteLimit);
-            client.UserConsole(command);
-        }
+        
     }
 }
