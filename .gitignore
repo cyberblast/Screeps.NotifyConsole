@@ -3,3 +3,4 @@
 *.suo
 **/app.config
 /.vs
+*.user
