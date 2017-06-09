@@ -55,7 +55,6 @@ namespace Screeps.NotifyConsole
             try
             {
                 grabber = new Grabber(ScreepsUsername, ScreepsPassword);
-                grabber.Interval = Interval;
                 grabber.OnNotification += Grabber_OnNotification;
                 http = new SendHttp(HttpUrl);
                 http.ApiKey = ApiKey;
